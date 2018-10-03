@@ -144,27 +144,27 @@ static inline int ipd_reg(ipd_t *ipd, const char *app, struct ev_loop *loop, int
   return(ret);
 }
 
-static inline int ipd_pub(ipd_t *ipd, const char *msg)
+static inline int ipd_pub(const char *msg)
 {
-  // send 'msg' as udp broadcast to 127.255.255.255:ipd->port
+  // send 'msg' as udp broadcast to 127.255.255.255:PORT
   int ret=-1;
   
-  if(NULL!=ipd&&NULL!=msg&&ipd->port>IPD_PORT_MIN&&ipd->port<IPD_PORT_MAX)
+  if(NULL!=msg)
   {
   }
   
   return(ret);
 }
 
-static inline int ipd_sub(ipd_t *ipd, const char *app, struct ev_loop *loop, int (*cb)(void *,const char *), void *ud)
+static inline int ipd_sub(struct ev_loop *loop, int (*cb)(void *,const char *), void *ud)
 {
-  // port <= find file 'app' in IPD_APP_DIR and return atoi(read(file))
+  // udp server on PORT => cb
   return(0);
 }
 
 static inline void ipd_send_command(const char *app, const char *cmd)
 {
-  // connect to unix socket IPD_PORT_DIR/'port' and write 'cmd', close socket
+  // connect to unix socket IPD_DIR/'app' and write 'cmd', close socket
   if(NULL!=app&&NULL!=cmd)
   {
   }
@@ -172,7 +172,7 @@ static inline void ipd_send_command(const char *app, const char *cmd)
 
 static inline char *ipd_send_request(const char *app, const char *req)
 {
-  // connect to unix socket IPD_PORT_DIR/'port' and write 'cmd', return reply
+  // connect to unix socket IPD_DIR/'app' and write 'cmd', return reply
   char *ret=NULL;
   
   if(NULL!=app&&NULL!=req)
