@@ -45,7 +45,8 @@ static inline void ipd_process_command_cb(struct ev_loop* loop, struct ev_io *io
   struct ipd *ipd=(struct ipd *)io;
   struct sockaddr_un ca={0};
   unsigned char buf[IPD_BUFSIZ];
-  int n,cl=sizeof(struct sockaddr_un);
+  int n;
+  socklen_t cl=sizeof(struct sockaddr_un);
   unsigned rs=0;
   
   ca.sun_family=PF_UNIX;
@@ -53,7 +54,7 @@ static inline void ipd_process_command_cb(struct ev_loop* loop, struct ev_io *io
   {
     ipd->cb(ipd->ud,buf,n,&rs);
     if(rs==0) buf[rs++]=0;
-    sendto(ipd->fd,buf,rs,0,&ca,cl);
+    sendto(ipd->fd,buf,rs,0,(struct sockaddr *)&ca,cl);
   }
 }
 
@@ -91,7 +92,7 @@ static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop
       unlink(nam);
       sa.sun_family=PF_UNIX;
       strncpy(sa.sun_path,nam,sizeof(sa.sun_path));
-      if(-1!=(bind(ipd->fd,&sa,sizeof(sa))))
+      if(-1!=(bind(ipd->fd,(struct sockaddr *)&sa,sizeof(sa))))
       {
         ev_io_init(&ipd->io,ipd_process_command_cb,ipd->fd,EV_READ);
         ev_io_start(ipd->loop,&ipd->io);
@@ -134,9 +135,9 @@ static inline void ipd_send_command(const char *app, const unsigned char *cmd, u
     ca.sun_family=PF_UNIX;
     char *dir=mkdtemp("ipd_cs.XXXXXX");
     snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
-    bind(fd,&ca,sizeof(ca));
+    bind(fd,(struct sockaddr *)&ca,sizeof(ca));
     snprintf(sa.sun_path,sizeof(sa.sun_path),"%s/%s",IPD_DIR,app);
-    sendto(fd,cmd,len,0,&sa,sizeof(sa));
+    sendto(fd,cmd,len,0,(struct sockaddr *)&sa,sizeof(sa));
     recvfrom(fd,buf,sizeof(buf),0,0,0);
     unlink(ca.sun_path);
     rmdir(dir);
@@ -155,9 +156,9 @@ static inline int ipd_send_request(const char *app, const unsigned char *req, un
     ca.sun_family=PF_UNIX;
     char *dir=mkdtemp("ipd_cs.XXXXXX");
     snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
-    bind(fd,&ca,sizeof(ca));
+    bind(fd,(struct sockaddr *)&ca,sizeof(ca));
     snprintf(sa.sun_path,sizeof(sa.sun_path),"%s/%s",IPD_DIR,app);
-    sendto(fd,req,len,0,&sa,sizeof(sa));
+    sendto(fd,req,len,0,(struct sockaddr *)&sa,sizeof(sa));
     ret=recvfrom(fd,reply,buflen,0,0,0);
     unlink(ca.sun_path);
     rmdir(dir);
