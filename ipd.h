@@ -24,159 +24,143 @@
 
 
 #define IPD_DIR "/tmp/ipd"
-#define IPD_APP_DIR IPD_DIR "/app"
-#define IPD_PORT_DIR IPD_DIR "/port"
-#define IPD_TMP_DIR IPD_DIR "/tmp"
 #define IPD_MAX_APP_NAME_LEN 31
-#define IPD_PORT_MIN 8700
-#define IPD_PORT_MAX 8800
-#define IPD_PORT_LEN 6
-#define IPD_PORT_ALLOC_RETRY 40
+#define IPD_PORT 12193
+#define IPD_BUFSIZ 2048
 
 
-typedef struct
+struct ipd
 {
   struct ev_io io;
   int fd;
-  int port;
   struct ev_loop *loop;
   void *ud;
-  int (*cb)(void *,const char *);
+  int (*cb)(void *,const unsigned char *,int,unsigned *);
   char app[IPD_MAX_APP_NAME_LEN+1];
-} ipd_t;
+};
 
 
-static inline void raccept_cb(struct ev_loop* loop, struct ev_io *io, int r)
+static inline void ipd_process_command_cb(struct ev_loop* loop, struct ev_io *io, int r)
 {
-  ipd_t *ipd=(ipd_t *)io;
-  char *buf;
-  struct sockaddr_in client_address;
-
-  socklen_t client_address_len = sizeof(client_address);
-  int client_fd = accept(ipd->fd, (struct sockaddr*)(&client_address), &client_address_len);
-
-  buf=malloc(1000); // FIXME: realloc to dynamic buffer
-  if(-1!=read(client_fd,buf,1000))
+  struct ipd *ipd=(struct ipd *)io;
+  struct sockaddr_un ca={0};
+  unsigned char buf[IPD_BUFSIZ];
+  int n,cl=sizeof(struct sockaddr_un);
+  unsigned rs=0;
+  
+  ca.sun_family=PF_UNIX;
+  if(-1!=(n=recvfrom(ipd->fd,buf,sizeof(buf),0,(struct sockaddr *)&ca,&cl))&&0!=ipd->cb)
   {
-    ipd->cb(ipd->ud,buf);
-    free(buf);
+    ipd->cb(ipd->ud,buf,n,&rs);
+    if(rs==0) buf[rs++]=0;
+    sendto(ipd->fd,buf,rs,0,&ca,cl);
   }
-  close(client_fd);
 }
 
-static inline void ipd_unreg(ipd_t *ipd)
+
+static inline void ipd_unreg(struct ipd *ipd)
 {
-  char nam[sizeof(IPD_APP_DIR)+1+IPD_MAX_APP_NAME_LEN+1];
-  char pnm[sizeof(IPD_PORT_DIR)+1+IPD_PORT_LEN+1];
+  char nam[sizeof(IPD_DIR)+1+IPD_MAX_APP_NAME_LEN+1];
 
   if(NULL!=ipd)
   {
     ev_io_stop(ipd->loop,&ipd->io);
-    shutdown(ipd->fd,SHUT_RDWR);
     close(ipd->fd);
-    snprintf(nam,sizeof(nam),"%s/%s",IPD_APP_DIR,ipd->app);
-    snprintf(pnm,sizeof(pnm),"%s/%d",IPD_PORT_DIR,ipd->port);
+    snprintf(nam,sizeof(nam),"%s/%s",IPD_DIR,ipd->app);
     unlink(nam);
-    unlink(pnm);
   }
 }
 
-static inline int ipd_reg(ipd_t *ipd, const char *app, struct ev_loop *loop, int (*cb)(void *,const char *), void *ud)
+static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop, int (*cb)(void *,const unsigned char *,int, unsigned *), void *ud)
 {
   int ret=-1;
-  char nam[sizeof(IPD_APP_DIR)+1+IPD_MAX_APP_NAME_LEN+1];
-  char tmp[sizeof(IPD_TMP_DIR)+1+IPD_MAX_APP_NAME_LEN+1];
-  char pnm[sizeof(IPD_PORT_DIR)+1+IPD_PORT_LEN+1];
-  FILE *f;
+  char nam[sizeof(IPD_DIR)+1+IPD_MAX_APP_NAME_LEN+1];
+  struct sockaddr_un sa={0};
   
-  if(0==mkdir(IPD_DIR,0777))
-  {
-    mkdir(IPD_APP_DIR,0777);
-    mkdir(IPD_PORT_DIR,0777);
-    mkdir(IPD_TMP_DIR,0777);
-  }
+  mkdir(IPD_DIR,0777);
   if(NULL!=ipd&&NULL!=app&&NULL!=loop)
   {
-    ipd->port=0;
     ipd->fd=-1;
     ipd->loop=loop;
     ipd->cb=cb;
     ipd->ud=ud;
     strncpy(ipd->app,app,sizeof(ipd->app));
-    snprintf(nam,sizeof(nam),"%s/%s",IPD_APP_DIR,app);
-    snprintf(tmp,sizeof(tmp),"%s/%s",IPD_TMP_DIR,app);
-    if(NULL!=(f=fopen(tmp,"w+b")))
+    snprintf(nam,sizeof(nam),"%s/%s",IPD_DIR,app);
+    if(-1!=(ipd->fd=socket(PF_UNIX,SOCK_DGRAM,0)))
     {
-      int p,cnt=IPD_PORT_ALLOC_RETRY;
-      struct sockaddr_un ad;
-      srand(getpid());
-      do
+      unlink(nam);
+      sa.sun_family=PF_UNIX;
+      strncpy(sa.sun_path,nam,sizeof(sa.sun_path));
+      if(-1!=(bind(ipd->fd,&sa,sizeof(sa))))
       {
-        p=(rand()%(IPD_PORT_MAX-IPD_PORT_MIN))+IPD_PORT_MIN;
-        snprintf(pnm,sizeof(pnm),"%s/%d",IPD_PORT_DIR,p);
-        ad.sun_family=AF_UNIX;
-        strcpy(ad.sun_path,pnm);
-        if(-1!=(ipd->fd=socket(AF_UNIX,SOCK_STREAM,0)))
-        {
-          if(0==bind(ipd->fd,(struct sockaddr*)(&ad),sizeof(ad)))
-          {
-            listen(ipd->fd,10);
-            ret=ipd->port=p;
-          }
-          else close(ipd->fd);
-        }
-      } while(ipd->port==0&&--cnt>0);
-      fprintf(f,"%d\n",ipd->port);
-      fclose(f);
-      if(ipd->port==0||rename(tmp,app)!=0)
-      {
-        unlink(tmp);
-        unlink(pnm);
-      }
-      else
-      {
-        ev_io_init(&ipd->io,raccept_cb,ipd->fd,EV_READ);
+        ev_io_init(&ipd->io,ipd_process_command_cb,ipd->fd,EV_READ);
         ev_io_start(ipd->loop,&ipd->io);
+        ret=0;
       }
     }
   }
-  
+    
   return(ret);
 }
 
-static inline int ipd_pub(const char *msg)
+static inline int ipd_pub(const unsigned char *msg, unsigned len)
 {
-  // send 'msg' as udp broadcast to 127.255.255.255:PORT
+  // send 'msg' as udp broadcast to 127.255.255.255:IPD_PORT
   int ret=-1;
   
-  if(NULL!=msg)
+  if(NULL!=msg&&len>0)
   {
   }
   
   return(ret);
 }
 
-static inline int ipd_sub(struct ev_loop *loop, int (*cb)(void *,const char *), void *ud)
+static inline int ipd_sub(struct ev_loop *loop, int (*cb)(void *,const unsigned char *, unsigned *), void *ud)
 {
-  // udp server on PORT => cb
+  // normal udp server on IPD_PORT => cb(ud,buf,buflen), cb returns -1 => close
   return(0);
 }
 
-static inline void ipd_send_command(const char *app, const char *cmd)
+static inline void ipd_send_command(const char *app, const unsigned char *cmd, unsigned len)
 {
   // connect to unix socket IPD_DIR/'app' and write 'cmd', close socket
-  if(NULL!=app&&NULL!=cmd)
+  struct sockaddr_un sa={0},ca={0};
+  unsigned char buf[IPD_BUFSIZ];
+  int fd;
+
+  if(0!=app&&0!=cmd)
   {
+    fd=socket(AF_UNIX,SOCK_DGRAM,0);
+    ca.sun_family=PF_UNIX;
+    char *dir=mkdtemp("ipd_cs.XXXXXX");
+    snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
+    bind(fd,&ca,sizeof(ca));
+    snprintf(sa.sun_path,sizeof(sa.sun_path),"%s/%s",IPD_DIR,app);
+    sendto(fd,cmd,len,0,&sa,sizeof(sa));
+    recvfrom(fd,buf,sizeof(buf),0,0,0);
+    unlink(ca.sun_path);
+    rmdir(dir);
   }
 }
 
-static inline char *ipd_send_request(const char *app, const char *req)
+static inline int ipd_send_request(const char *app, const unsigned char *req, unsigned len,unsigned char *reply, unsigned buflen)
 {
   // connect to unix socket IPD_DIR/'app' and write 'cmd', return reply
-  char *ret=NULL;
+  int ret=-1,fd;
+  struct sockaddr_un ca={0},sa={0};
   
-  if(NULL!=app&&NULL!=req)
+  if(NULL!=app&&NULL!=req&&len>0&&reply!=0&&buflen>0)
   {
+    fd=socket(AF_UNIX,SOCK_DGRAM,0);
+    ca.sun_family=PF_UNIX;
+    char *dir=mkdtemp("ipd_cs.XXXXXX");
+    snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
+    bind(fd,&ca,sizeof(ca));
+    snprintf(sa.sun_path,sizeof(sa.sun_path),"%s/%s",IPD_DIR,app);
+    sendto(fd,req,len,0,&sa,sizeof(sa));
+    ret=recvfrom(fd,reply,buflen,0,0,0);
+    unlink(ca.sun_path);
+    rmdir(dir);
   }
 
   return(ret);
