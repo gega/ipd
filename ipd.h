@@ -49,7 +49,7 @@ static inline void ipd_process_command_cb(struct ev_loop* loop, struct ev_io *io
   socklen_t cl=sizeof(struct sockaddr_un);
   unsigned rs=0;
   
-  ca.sun_family=PF_UNIX;
+  ca.sun_family=AF_UNIX;
   if(-1!=(n=recvfrom(ipd->fd,buf,sizeof(buf),0,(struct sockaddr *)&ca,&cl))&&0!=ipd->cb)
   {
     ipd->cb(ipd->ud,buf,n,&rs);
@@ -87,10 +87,10 @@ static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop
     ipd->ud=ud;
     strncpy(ipd->app,app,sizeof(ipd->app));
     snprintf(nam,sizeof(nam),"%s/%s",IPD_DIR,app);
-    if(-1!=(ipd->fd=socket(PF_UNIX,SOCK_DGRAM,0)))
+    if(-1!=(ipd->fd=socket(AF_UNIX,SOCK_DGRAM,0)))
     {
       unlink(nam);
-      sa.sun_family=PF_UNIX;
+      sa.sun_family=AF_UNIX;
       strncpy(sa.sun_path,nam,sizeof(sa.sun_path));
       if(-1!=(bind(ipd->fd,(struct sockaddr *)&sa,sizeof(sa))))
       {
@@ -132,7 +132,7 @@ static inline void ipd_send_command(const char *app, const unsigned char *cmd, u
   if(0!=app&&0!=cmd)
   {
     fd=socket(AF_UNIX,SOCK_DGRAM,0);
-    ca.sun_family=PF_UNIX;
+    ca.sun_family=AF_UNIX;
     char *dir=mkdtemp("ipd_cs.XXXXXX");
     snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
     bind(fd,(struct sockaddr *)&ca,sizeof(ca));
@@ -149,16 +149,18 @@ static inline int ipd_send_request(const char *app, const unsigned char *req, un
   // connect to unix socket IPD_DIR/'app' and write 'cmd', return reply
   int ret=-1,fd;
   struct sockaddr_un ca={0},sa={0};
+  char dir[]=IPD_DIR "/ipd_cs.XXXXXX";
   
   if(NULL!=app&&NULL!=req&&len>0&&reply!=0&&buflen>0)
   {
     fd=socket(AF_UNIX,SOCK_DGRAM,0);
-    ca.sun_family=PF_UNIX;
-    char *dir=mkdtemp("ipd_cs.XXXXXX");
+    ca.sun_family=AF_UNIX;
+    mkdtemp(dir);
     snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
     bind(fd,(struct sockaddr *)&ca,sizeof(ca));
     snprintf(sa.sun_path,sizeof(sa.sun_path),"%s/%s",IPD_DIR,app);
     sendto(fd,req,len,0,(struct sockaddr *)&sa,sizeof(sa));
+    printf("%d %d\n",__LINE__,len);
     ret=recvfrom(fd,reply,buflen,0,0,0);
     unlink(ca.sun_path);
     rmdir(dir);
