@@ -35,7 +35,7 @@ struct ipd
   int fd;
   struct ev_loop *loop;
   void *ud;
-  int (*cb)(void *,const unsigned char *,int,unsigned *);
+  int (*cb)(void *,char *,int,unsigned *);
   char app[IPD_MAX_APP_NAME_LEN+1];
 };
 
@@ -44,7 +44,7 @@ static inline void ipd_process_command_cb(struct ev_loop* loop, struct ev_io *io
 {
   struct ipd *ipd=(struct ipd *)io;
   struct sockaddr_un ca={0};
-  unsigned char buf[IPD_BUFSIZ];
+  char buf[IPD_BUFSIZ];
   int n;
   socklen_t cl=sizeof(struct sockaddr_un);
   unsigned rs=0;
@@ -72,7 +72,7 @@ static inline void ipd_unreg(struct ipd *ipd)
   }
 }
 
-static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop, int (*cb)(void *,const unsigned char *,int, unsigned *), void *ud)
+static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop, int (*cb)(void *,char *,int, unsigned *), void *ud)
 {
   int ret=-1;
   char nam[sizeof(IPD_DIR)+1+IPD_MAX_APP_NAME_LEN+1];
@@ -104,54 +104,43 @@ static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop
   return(ret);
 }
 
-static inline int ipd_pub(const unsigned char *msg, unsigned len)
+static inline int ipd_pub(const char *msg)
 {
-  // send 'msg' as udp broadcast to 127.255.255.255:IPD_PORT
   int ret=-1;
+  int fd;
+  int bc=1;
+  struct sockaddr_in ad={0};
   
-  if(NULL!=msg&&len>0)
+  if(NULL!=msg)
   {
+    fd=socket(AF_INET,SOCK_DGRAM,0);
+    setsockopt(fd,SOL_SOCKET,SO_BROADCAST,&bc,sizeof(bc));
+    ad.sin_family=AF_INET;
+    ad.sin_port=(in_port_t)htons(IPD_PORT);
+    ad.sin_addr.s_addr=inet_addr("127.255.255.255");
+    ret=sendto(fd,msg,strlen(msg)+1,0,(struct sockaddr *)&ad,sizeof(ad));
   }
   
   return(ret);
 }
 
-static inline int ipd_sub(struct ev_loop *loop, int (*cb)(void *,const unsigned char *, unsigned *), void *ud)
+static inline int ipd_sub(struct ev_loop *loop, int (*cb)(void *,const char *, unsigned *), void *ud)
 {
   // normal udp server on IPD_PORT => cb(ud,buf,buflen), cb returns -1 => close
   return(0);
 }
 
-static inline void ipd_send_command(const char *app, const unsigned char *cmd, unsigned len)
-{
-  // connect to unix socket IPD_DIR/'app' and write 'cmd', close socket
-  struct sockaddr_un sa={0},ca={0};
-  unsigned char buf[IPD_BUFSIZ];
-  int fd;
+#define ipd_send_command(app,cmd) ipd_send_request(app,cmd,NULL,0)
 
-  if(0!=app&&0!=cmd)
-  {
-    fd=socket(AF_UNIX,SOCK_DGRAM,0);
-    ca.sun_family=AF_UNIX;
-    char *dir=mkdtemp("ipd_cs.XXXXXX");
-    snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
-    bind(fd,(struct sockaddr *)&ca,sizeof(ca));
-    snprintf(sa.sun_path,sizeof(sa.sun_path),"%s/%s",IPD_DIR,app);
-    sendto(fd,cmd,len,0,(struct sockaddr *)&sa,sizeof(sa));
-    recvfrom(fd,buf,sizeof(buf),0,0,0);
-    unlink(ca.sun_path);
-    rmdir(dir);
-  }
-}
-
-static inline int ipd_send_request(const char *app, const unsigned char *req, unsigned len,unsigned char *reply, unsigned buflen)
+static inline int ipd_send_request(const char *app, const char *req, char *reply, unsigned buflen)
 {
   // connect to unix socket IPD_DIR/'app' and write 'cmd', return reply
   int ret=-1,fd;
   struct sockaddr_un ca={0},sa={0};
-  char dir[]=IPD_DIR "/ipd_cs.XXXXXX";
+  char dir[]=IPD_DIR "/ipd_csr.XXXXXX";
+  char buf;
   
-  if(NULL!=app&&NULL!=req&&len>0&&reply!=0&&buflen>0)
+  if(0!=app&&0!=req)
   {
     fd=socket(AF_UNIX,SOCK_DGRAM,0);
     ca.sun_family=AF_UNIX;
@@ -159,9 +148,8 @@ static inline int ipd_send_request(const char *app, const unsigned char *req, un
     snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
     bind(fd,(struct sockaddr *)&ca,sizeof(ca));
     snprintf(sa.sun_path,sizeof(sa.sun_path),"%s/%s",IPD_DIR,app);
-    sendto(fd,req,len,0,(struct sockaddr *)&sa,sizeof(sa));
-    printf("%d %d\n",__LINE__,len);
-    ret=recvfrom(fd,reply,buflen,0,0,0);
+    sendto(fd,req,strlen(req)+1,0,(struct sockaddr *)&sa,sizeof(sa));
+    ret=recvfrom(fd,(reply==0?&buf:reply),buflen,0,0,0);
     unlink(ca.sun_path);
     rmdir(dir);
   }

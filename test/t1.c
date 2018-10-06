@@ -1,12 +1,17 @@
 #include <ev.h>
 #include <stdio.h>
-#include "ipd.h"
+#include <ctype.h>
+#include "../ipd.h"
 
 
-int scb(void *ud, const unsigned char *msg, int len, unsigned *rlen)
+int scb(void *ud, char *msg, int len, unsigned *rlen)
 {
-  printf("m(%d):%s\n",len,(const char *)msg);
-  if(rlen!=0) *rlen=0;
+  printf("h(%d):%s\n",len,msg);
+  if(rlen!=0)
+  {
+    for(int i=0;i<len;i++) msg[i]=toupper(msg[i]);
+    *rlen=len;
+  }
   return(0);
 }
 
