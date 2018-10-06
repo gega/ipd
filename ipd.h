@@ -108,7 +108,7 @@ static inline int ipd_pub(const char *msg)
 {
   int ret=-1;
   int fd;
-  int bc=1;
+  const int bc=1;
   struct sockaddr_in ad={0};
   
   if(NULL!=msg)
@@ -124,17 +124,46 @@ static inline int ipd_pub(const char *msg)
   return(ret);
 }
 
-static inline int ipd_sub(struct ev_loop *loop, int (*cb)(void *,const char *, unsigned *), void *ud)
+static inline void ipd_sub_cb(struct ev_loop* loop, struct ev_io *io, int r)
 {
-  // normal udp server on IPD_PORT => cb(ud,buf,buflen), cb returns -1 => close
-  return(0);
+  struct ipd *ipd=(struct ipd *)io;
+  char buf[IPD_BUFSIZ];
+  int n;
+  
+  if(-1!=(n=recvfrom(ipd->fd,buf,sizeof(buf),0,0,0))&&0!=ipd->cb)
+  {
+    ipd->cb(ipd->ud,buf,n,0);
+  }
+}
+
+static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void *,char *,int, unsigned *), void *ud)
+{
+  int ret=-1;
+  const int enable=1;
+  struct sockaddr_in ad={0};
+
+  if(0!=ipd&&0!=loop&&0!=cb)
+  {
+    ipd->fd=socket(PF_INET,SOCK_DGRAM,0);
+    setsockopt(ipd->fd,SOL_SOCKET,SO_REUSEADDR,&enable,sizeof(int));
+    ad.sin_family=AF_INET;
+    ad.sin_port=htons(IPD_PORT);
+    ad.sin_addr.s_addr=INADDR_ANY;
+    bind(ipd->fd,(struct sockaddr*)&ad,sizeof(ad));
+    ipd->cb=cb;
+    ipd->ud=ud;
+    ev_io_init(&ipd->io,ipd_sub_cb,ipd->fd,EV_READ);
+    ev_io_start(loop,&ipd->io);
+    ret=0;
+  }
+
+  return(ret);
 }
 
 #define ipd_send_command(app,cmd) ipd_send_request(app,cmd,NULL,0)
 
 static inline int ipd_send_request(const char *app, const char *req, char *reply, unsigned buflen)
 {
-  // connect to unix socket IPD_DIR/'app' and write 'cmd', return reply
   int ret=-1,fd;
   struct sockaddr_un ca={0},sa={0};
   char dir[]=IPD_DIR "/ipd_csr.XXXXXX";
