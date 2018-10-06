@@ -143,7 +143,7 @@ static inline int ipd_send_request(const char *app, const char *req, char *reply
   if(0!=app&&0!=req)
   {
     fd=socket(AF_UNIX,SOCK_DGRAM,0);
-    ca.sun_family=AF_UNIX;
+    ca.sun_family=sa.sun_family=AF_UNIX;
     mkdtemp(dir);
     snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
     bind(fd,(struct sockaddr *)&ca,sizeof(ca));
