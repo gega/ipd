@@ -177,8 +177,8 @@ static inline int ipd_send_request(const char *app, const char *req, char *reply
     snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
     bind(fd,(struct sockaddr *)&ca,sizeof(ca));
     snprintf(sa.sun_path,sizeof(sa.sun_path),"%s/%s",IPD_DIR,app);
-    sendto(fd,req,strlen(req)+1,0,(struct sockaddr *)&sa,sizeof(sa));
-    ret=recvfrom(fd,(reply==0?&buf:reply),buflen,0,0,0);
+    if(0<sendto(fd,req,strlen(req)+1,0,(struct sockaddr *)&sa,sizeof(sa))) ret=recvfrom(fd,(reply==0?&buf:reply),buflen,0,0,0);
+    else if(reply!=0) *reply=0;
     unlink(ca.sun_path);
     rmdir(dir);
   }
