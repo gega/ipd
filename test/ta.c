@@ -10,18 +10,20 @@ static ev_timer tim;
 static struct ev_loop *loop;
 
 
-int scb(void *ud, char *msg, int len, unsigned *rlen)
+int scb(void *ud, char *msg, int len, char **rpl)
 {
+  static char r[100];
+
   printf("%s(%d):%s\n",app,len,msg);
-  if(rlen!=0)
+  if(rpl!=0)
   {
-    for(int i=0;i<len;i++) msg[i]=toupper(msg[i]);
-    *rlen=len;
+    for(int i=0;i<len;i++) r[i]=toupper(msg[i]);
+    *rpl=r;
   }
   return(0);
 }
 
-int pcb(void *ud, char *msg, int len, unsigned *unused)
+int pcb(void *ud, char *msg, int len)
 {
   printf("%s bus: (%d) '%s'\n",app,len,msg);
   return(0);
