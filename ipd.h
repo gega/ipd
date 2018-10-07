@@ -40,6 +40,61 @@ struct ipd
 };
 
 
+/*
+ *  register application
+ *
+ *    ipd  - uninitialized ipd struct
+ *    app  - application name, must be unique system wide
+ *    loop - libev loop
+ *    cb   - callback for requests
+ *           int cb(void *ud, char *req, int len, unsigned *replylen)
+ *             ud       - userdata
+ *             req      - request as c string, reply on return
+ *             len      - length of request including terminator
+ *             replylen - length of reply (<=len)
+ *    ud   - userdata, passed to cb
+ */
+static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop, int (*cb)(void *,char *,int, unsigned *), void *ud);
+
+/*
+ *  unregister application
+ *
+ *    ipd - ipd struct filled by ipd_reg()
+ */
+static inline void ipd_unreg(struct ipd *ipd);
+
+/*
+ *  publish message on public bus
+ *
+ *    msg - message as c string
+ */
+static inline int ipd_pub(const char *msg);
+
+/*
+ *  subscribe to public message bus
+ *
+ *    ipd  - uninitialized ipd struct for the subscription
+ *    loop - libev loop
+ *    cb   - callback for messages on the bus
+ *           int cb(void *ud, char *req, int len, unsigned *unused)
+ *             ud       - userdata
+ *             req      - request as c string
+ *             len      - length of request including terminator
+ *    ud   - userdata passed to cb
+ */
+static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void *,char *,int, unsigned *), void *ud);
+
+/*
+ *  send an rpc request for an application
+ *
+ *    app    - name of destination application
+ *    req    - request as c string
+ *    reply  - buffer for reply or 0 if reply is not important
+ *    buflen - length of reply buffer or 0 if reply should be dropped
+ */
+static inline int ipd_send_request(const char *app, const char *req, char *reply, unsigned buflen);
+
+
 static inline void ipd_process_command_cb(struct ev_loop* loop, struct ev_io *io, int r)
 {
   struct ipd *ipd=(struct ipd *)io;
@@ -160,7 +215,7 @@ static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void 
   return(ret);
 }
 
-#define ipd_send_command(app,cmd) ipd_send_request(app,cmd,NULL,0)
+#define ipd_send_command(app,cmd) ipd_send_request(app,cmd,0,0)
 
 static inline int ipd_send_request(const char *app, const char *req, char *reply, unsigned buflen)
 {
