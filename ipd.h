@@ -114,9 +114,11 @@ static inline void ipd_process_command_cb(struct ev_loop* loop, struct ev_io *io
   if(-1!=(n=recvfrom(ipd->fd,buf,sizeof(buf),MSG_TRUNC|MSG_PEEK,(struct sockaddr *)&ca,&cl))&&0!=ipd->u.rcb)
   {
     if(ipd->rxblen<n) ipd->rxbuf=realloc(ipd->rxbuf,ipd->rxblen=n);
-    recvfrom(ipd->fd,ipd->rxbuf,n,0,0,0);
-    ipd->u.rcb(ipd->ud,ipd->rxbuf,n,&rpl);
-    if(0!=rpl) sendto(ipd->fd,rpl,strlen(rpl)+1,0,(struct sockaddr *)&ca,cl);
+    if(-1!=recvfrom(ipd->fd,ipd->rxbuf,n,0,0,0))
+    {
+      ipd->u.rcb(ipd->ud,ipd->rxbuf,n,&rpl);
+      if(0!=rpl) sendto(ipd->fd,rpl,strlen(rpl)+1,0,(struct sockaddr *)&ca,cl);
+    }
   }
 }
 
@@ -125,7 +127,7 @@ static inline void ipd_unreg(struct ipd *ipd)
 {
   char nam[sizeof(IPD_DIR)+1+IPD_MAX_APP_NAME_LEN+1];
 
-  if(NULL!=ipd)
+  if(0!=ipd)
   {
     ev_io_stop(ipd->loop,&ipd->io);
     close(ipd->fd);
@@ -146,7 +148,7 @@ static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop
   struct sockaddr_un sa={0};
   
   mkdir(IPD_DIR,0777);
-  if(NULL!=ipd&&NULL!=app&&NULL!=loop)
+  if(0!=ipd&&0!=app&&0!=loop)
   {
     ipd->fd=-1;
     ipd->loop=loop;
@@ -180,14 +182,18 @@ static inline int ipd_pub(const char *msg)
   const int bc=1;
   struct sockaddr_in ad={0};
   
-  if(NULL!=msg&&(l=strlen(msg))<IPD_MAXPUB)
+  if(0!=msg&&(l=strlen(msg))<IPD_MAXPUB)
   {
-    fd=socket(AF_INET,SOCK_DGRAM,0);
-    setsockopt(fd,SOL_SOCKET,SO_BROADCAST,&bc,sizeof(bc));
-    ad.sin_family=AF_INET;
-    ad.sin_port=(in_port_t)htons(IPD_PORT);
-    ad.sin_addr.s_addr=inet_addr("127.255.255.255");
-    ret=sendto(fd,msg,l+1,0,(struct sockaddr *)&ad,sizeof(ad));
+    if(-1!=(fd=socket(AF_INET,SOCK_DGRAM,0)))
+    {
+      if(-1!=setsockopt(fd,SOL_SOCKET,SO_BROADCAST,&bc,sizeof(bc)))
+      {
+        ad.sin_family=AF_INET;
+        ad.sin_port=(in_port_t)htons(IPD_PORT);
+        ad.sin_addr.s_addr=inet_addr("127.255.255.255");
+        ret=sendto(fd,msg,l+1,0,(struct sockaddr *)&ad,sizeof(ad));
+      }
+    }
   }
   
   return(ret);
@@ -216,18 +222,22 @@ static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void 
     ipd->rxbuf=0;
     ipd->rxblen=0;
     ipd->app[0]=0;
-    ipd->fd=socket(PF_INET,SOCK_DGRAM,0);
-    setsockopt(ipd->fd,SOL_SOCKET,SO_REUSEADDR,&enable,sizeof(int));
-    setsockopt(ipd->fd,SOL_SOCKET,SO_REUSEPORT,&enable,sizeof(int));
-    ad.sin_family=AF_INET;
-    ad.sin_port=htons(IPD_PORT);
-    ad.sin_addr.s_addr=INADDR_ANY;
-    bind(ipd->fd,(struct sockaddr*)&ad,sizeof(ad));
-    ipd->u.bcb=cb;
-    ipd->ud=ud;
-    ev_io_init(&ipd->io,ipd_sub_cb,ipd->fd,EV_READ);
-    ev_io_start(loop,&ipd->io);
-    ret=0;
+    if(-1!=(ipd->fd=socket(PF_INET,SOCK_DGRAM,0)))
+    {
+      setsockopt(ipd->fd,SOL_SOCKET,SO_REUSEADDR,&enable,sizeof(int));
+      setsockopt(ipd->fd,SOL_SOCKET,SO_REUSEPORT,&enable,sizeof(int));
+      ad.sin_family=AF_INET;
+      ad.sin_port=htons(IPD_PORT);
+      ad.sin_addr.s_addr=INADDR_ANY;
+      if(-1!=bind(ipd->fd,(struct sockaddr*)&ad,sizeof(ad)))
+      {
+        ipd->u.bcb=cb;
+        ipd->ud=ud;
+        ev_io_init(&ipd->io,ipd_sub_cb,ipd->fd,EV_READ);
+        ev_io_start(loop,&ipd->io);
+        ret=0;
+      }
+    }
   }
 
   return(ret);
@@ -244,16 +254,19 @@ static inline int ipd_send_request(const char *app, const char *req, char *reply
   
   if(0!=app&&0!=req)
   {
-    fd=socket(AF_UNIX,SOCK_DGRAM,0);
-    ca.sun_family=sa.sun_family=AF_UNIX;
-    mkdtemp(dir);
-    snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
-    bind(fd,(struct sockaddr *)&ca,sizeof(ca));
-    snprintf(sa.sun_path,sizeof(sa.sun_path),"%s/%s",IPD_DIR,app);
-    if(0<sendto(fd,req,strlen(req)+1,0,(struct sockaddr *)&sa,sizeof(sa))) ret=recvfrom(fd,(reply==0?&buf:reply),buflen,0,0,0);
-    else if(reply!=0) *reply=0;
-    unlink(ca.sun_path);
-    rmdir(dir);
+    if(-1!=(fd=socket(AF_UNIX,SOCK_DGRAM,0))&&0!=mkdtemp(dir))
+    {
+      ca.sun_family=sa.sun_family=AF_UNIX;
+      snprintf(ca.sun_path,sizeof(ca.sun_path),"%s/cs",dir);
+      if(-1!=bind(fd,(struct sockaddr *)&ca,sizeof(ca)))
+      {
+        snprintf(sa.sun_path,sizeof(sa.sun_path),"%s/%s",IPD_DIR,app);
+        if(0<sendto(fd,req,strlen(req)+1,0,(struct sockaddr *)&sa,sizeof(sa))) ret=recvfrom(fd,(reply?reply:&buf),buflen,0,0,0);
+        else if(reply) *reply=0;
+        unlink(ca.sun_path);
+      }
+      rmdir(dir);
+    }
   }
 
   return(ret);
