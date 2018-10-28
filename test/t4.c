@@ -4,7 +4,7 @@
 #include "../ipd.h"
 
 
-int scb(void *ud, char *msg, int len, unsigned *rlen)
+int scb(void *ud, const char *msg, int len)
 {
   printf("h(%d):%s\n",len,msg);
   return(0);

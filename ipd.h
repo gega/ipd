@@ -37,8 +37,8 @@ struct ipd
   void *ud;
   union
   {
-    int (*rcb)(void *,char *,int,char **);
-    int (*bcb)(void *,char *,int);
+    int (*rcb)(void *,const char *,int,char **);
+    int (*bcb)(void *,const char *,int);
   } u;
   char *rxbuf;
   int rxblen;
@@ -53,14 +53,14 @@ struct ipd
  *    app  - application name, must be unique system wide
  *    loop - libev loop
  *    cb   - callback for requests
- *           int cb(void *ud, char *req, int len, char **reply)
+ *           int cb(void *ud, const char *req, int len, char **reply)
  *             ud       - userdata
  *             req      - request as c string
  *             len      - length of request including terminator
  *             reply    - reply
  *    ud   - userdata, passed to cb
  */
-static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop, int (*cb)(void *,char *,int,char **), void *ud);
+static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop, int (*cb)(void *,const char *,int,char **), void *ud);
 
 /*
  *  unregister application
@@ -88,7 +88,7 @@ static inline int ipd_pub(const char *msg);
  *             len      - length of request including terminator
  *    ud   - userdata passed to cb
  */
-static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void *,char *,int), void *ud);
+static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void *,const char *,int), void *ud);
 
 /*
  *  send an rpc request for an application
@@ -141,7 +141,7 @@ static inline void ipd_unreg(struct ipd *ipd)
   }
 }
 
-static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop, int (*cb)(void *,char *,int,char **), void *ud)
+static inline int ipd_reg(struct ipd *ipd, const char *app, struct ev_loop *loop, int (*cb)(void *,const char *,int,char **), void *ud)
 {
   int ret=-1;
   char nam[sizeof(IPD_DIR)+1+IPD_MAX_APP_NAME_LEN+1];
@@ -210,7 +210,7 @@ static inline void ipd_sub_cb(struct ev_loop* loop, struct ev_io *io, int r)
 
 #define ipd_unsub(ipd) ipd_unreg(ipd)
 
-static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void *,char *,int), void *ud)
+static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void *,const char *,int), void *ud)
 {
   int ret=-1;
   const int enable=1;

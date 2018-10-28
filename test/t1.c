@@ -4,13 +4,16 @@
 #include "../ipd.h"
 
 
-int scb(void *ud, char *msg, int len, unsigned *rlen)
+int scb(void *ud, const char *msg, int len, char **rply)
 {
+  char rbuf[100];
+
   printf("h(%d):%s\n",len,msg);
-  if(rlen!=0)
+  if(rply!=0)
   {
-    for(int i=0;i<len;i++) msg[i]=toupper(msg[i]);
-    *rlen=len;
+    if(len<sizeof(rbuf)) for(int i=0;i<len;i++) rbuf[i]=toupper(msg[i]);
+    else snprintf(rbuf,sizeof(rbuf),"*ERROR: message too long");
+    *rply=rbuf;
   }
   return(0);
 }

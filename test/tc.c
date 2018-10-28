@@ -10,7 +10,7 @@ static ev_timer tim;
 static struct ev_loop *loop;
 
 
-int scb(void *ud, char *msg, int len, char **rpl)
+int scb(void *ud, const char *msg, int len, char **rpl)
 {
   static char r[100];
 
@@ -23,7 +23,7 @@ int scb(void *ud, char *msg, int len, char **rpl)
   return(0);
 }
 
-int pcb(void *ud, char *msg, int len)
+int pcb(void *ud, const char *msg, int len)
 {
   printf("%s bus: (%d) '%s'\n",app,len,msg);
   return(0);
