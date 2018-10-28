@@ -84,21 +84,36 @@ static inline int ipd_pub(const char *msg);
  *    cb   - callback for messages on the bus
  *           int cb(void *ud, char *req, int len, unsigned *unused)
  *             ud       - userdata
- *             req      - request as c string
- *             len      - length of request including terminator
+ *             msg      - message as c string
+ *             len      - length of message including terminator
  *    ud   - userdata passed to cb
  */
 static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void *,const char *,int), void *ud);
+
+/*
+ *  unsubscribe from public message bus
+ *
+ *    ipd - ipd struct filled by ipd_sub()
+ */
+#define ipd_unsub(ipd) ipd_unreg(ipd)
 
 /*
  *  send an rpc request for an application
  *
  *    app    - name of destination application
  *    req    - request as c string
- *    reply  - buffer for reply or 0 if reply is not important
- *    buflen - length of reply buffer or 0 if reply should be dropped
+ *    reply  - buffer for reply
+ *    buflen - length of reply buffer
  */
 static inline int ipd_send_request(const char *app, const char *req, char *reply, unsigned buflen);
+
+/*
+ *  send an rpc command for an application
+ *
+ *    app    - name of destination application
+ *    cmd    - command as c string
+ */
+#define ipd_send_command(app,cmd) ipd_send_request(app,cmd,0,0)
 
 
 static inline void ipd_process_command_cb(struct ev_loop* loop, struct ev_io *io, int r)
@@ -202,13 +217,10 @@ static inline int ipd_pub(const char *msg)
 static inline void ipd_sub_cb(struct ev_loop* loop, struct ev_io *io, int r)
 {
   struct ipd *ipd=(struct ipd *)io;
-  char buf[IPD_MAXPUB];
   int n;
   
-  if(-1!=(n=recvfrom(ipd->fd,buf,sizeof(buf),0,0,0))&&0!=ipd->u.bcb) ipd->u.bcb(ipd->ud,buf,n);
+  if(-1!=(n=recvfrom(ipd->fd,ipd->rxbuf,ipd->rxblen,0,0,0))&&0!=ipd->u.bcb) ipd->u.bcb(ipd->ud,ipd->rxbuf,n);
 }
-
-#define ipd_unsub(ipd) ipd_unreg(ipd)
 
 static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void *,const char *,int), void *ud)
 {
@@ -219,8 +231,8 @@ static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void 
   if(0!=ipd&&0!=loop&&0!=cb)
   {
     ipd->loop=loop;
-    ipd->rxbuf=0;
-    ipd->rxblen=0;
+    ipd->rxbuf=malloc(IPD_MAXPUB);
+    ipd->rxblen=IPD_MAXPUB;
     ipd->app[0]=0;
     if(-1!=(ipd->fd=socket(PF_INET,SOCK_DGRAM,0)))
     {
@@ -242,8 +254,6 @@ static inline int ipd_sub(struct ipd *ipd, struct ev_loop *loop, int (*cb)(void 
 
   return(ret);
 }
-
-#define ipd_send_command(app,cmd) ipd_send_request(app,cmd,0,0)
 
 static inline int ipd_send_request(const char *app, const char *req, char *reply, unsigned buflen)
 {
