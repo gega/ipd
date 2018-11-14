@@ -47,7 +47,7 @@ int main(int argc, char **argv)
   
   loop=ev_default_loop(EVBACKEND_SELECT);
   ev_init(&tim,tim_cb);
-  tim.repeat=0.59d;
+  tim.repeat=0.59;
   ipd_reg(&ipd,app,loop,scb,0);
   ipd_sub(&sub,loop,pcb,0);
   printf("%s running...\n",app);
